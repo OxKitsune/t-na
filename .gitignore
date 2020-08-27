@@ -1,0 +1,6 @@
+/target
+*.txt
+/.idea
+*.iml
+*.db
+*.lock
