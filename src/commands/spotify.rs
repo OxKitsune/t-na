@@ -24,7 +24,7 @@ pub async fn spotify(ctx: &Context, msg: &Message, mut args: Args) -> CommandRes
 
     let first = args.current().expect("No argument specified").to_lowercase();
 
-    if first == "songs" || first == "song" {z
+    if first == "songs" || first == "song" {
         let mut song_msg = get_songs(ctx, 10).await;
         msg.channel_id.say(ctx, song_msg).await;
     } else if first == "artists" || first == "artist" {
