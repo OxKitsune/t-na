@@ -6,8 +6,9 @@ use serenity::framework::standard::{
 use serenity::model::prelude::*;
 use serenity::prelude::*;
 
+use log::{debug, info, trace, warn};
+
 use crate::DBPool;
-use crate::util::log;
 
 #[derive(Debug)]
 struct ListenEntry {
@@ -16,7 +17,7 @@ struct ListenEntry {
 }
 
 #[command]
-pub async fn spotify(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
+pub async fn spotify(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
     if args.len() < 1 {
         msg.channel_id.say(ctx, "Invalid arguments!").await;
         return CommandResult::Ok(());
@@ -25,10 +26,10 @@ pub async fn spotify(ctx: &Context, msg: &Message, mut args: Args) -> CommandRes
     let first = args.current().expect("No argument specified").to_lowercase();
 
     if first == "songs" || first == "song" {
-        let mut song_msg = get_songs(ctx, 10).await;
+        let song_msg = get_songs(ctx, 10).await;
         msg.channel_id.say(ctx, song_msg).await;
     } else if first == "artists" || first == "artist" {
-        let mut artist_msg = get_artists(ctx, 10).await;
+        let artist_msg = get_artists(ctx, 10).await;
         msg.channel_id.say(ctx, artist_msg).await;
     } else {
         msg.channel_id.say(ctx, "Invalid arguments!").await;
@@ -77,6 +78,5 @@ async fn get_songs(ctx: &Context, top: i32) -> String {
         let entry = listen_entry.unwrap();
         song_msg.push_str(&format!("**{}**: {}\n", entry.name, entry.listen_count));
     }
-
     song_msg.to_string()
 }

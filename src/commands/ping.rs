@@ -6,7 +6,7 @@ use serenity::framework::standard::{
 };
 
 #[command]
-pub async fn ping(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
+pub async fn ping(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
     let timestamp = msg.timestamp;
     let mut response = match msg.channel_id.say(&ctx, "pong!").await {
         Ok(response) => response,
