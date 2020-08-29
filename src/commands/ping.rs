@@ -1,9 +1,12 @@
-use serenity::prelude::*;
-use serenity::model::prelude::*;
+use log::{debug, info, trace, warn};
 use serenity::framework::standard::{
     Args, CommandResult,
     macros::command,
 };
+use serenity::model::prelude::*;
+use serenity::prelude::*;
+
+use crate::user::TNaUser;
 
 #[command]
 pub async fn ping(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
@@ -27,6 +30,10 @@ pub async fn ping(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
             return CommandResult::Ok(());
         }
     }
+
+    // let mut user: TNaUser = TNaUser::load_user(ctx, &msg.author.id).await.unwrap();
+    //
+    // info!("User: {} currency: {}", user.id,  user.currency);
 
     return CommandResult::Ok(());
 }

@@ -10,10 +10,10 @@ use log::{debug, info, trace, warn};
 
 use crate::DBPool;
 
-#[derive(Debug)]
-struct ListenEntry {
-    name: String,
-    listen_count: i64,
+/// Struct that stores data for the listen entries
+pub struct ListenEntry {
+    pub name: String,
+    pub listen_count: i64,
 }
 
 #[command]

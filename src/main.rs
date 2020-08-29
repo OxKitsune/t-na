@@ -21,19 +21,28 @@ use serenity::{
     model::{channel::*, event::PresenceUpdateEvent, event::ResumedEvent, gateway::Ready, guild::*, id::*},
     prelude::*,
 };
+use serenity::model::gateway::Activity;
 
 use commands::{
     ping::*,
     spotify::*,
 };
+use user::*;
 use util::colour;
 
 mod commands;
 mod util;
+mod user;
 
 const DB_PATH: &str = "t-na.db";
 
 struct DBPool;
+
+struct TopArtist;
+
+impl TypeMapKey for TopArtist {
+    type Value = String;
+}
 
 impl TypeMapKey for DBPool {
     type Value = r2d2::Pool<SqliteConnectionManager>;
@@ -60,8 +69,9 @@ impl EventHandler for Handler {
     }
 
 
-    async fn ready(&self, _ctx: Context, ready: Ready) {
+    async fn ready(&self, ctx: Context, ready: Ready) {
         info!("{} is connected!", ready.user.name);
+        set_activity(&ctx).await;
     }
 
     async fn presence_update(&self, ctx: Context, data: PresenceUpdateEvent) {
@@ -75,7 +85,8 @@ impl EventHandler for Handler {
                     let album = activity.assets.expect("No assets?").large_text.expect("No album name?");
 
                     info!("Playing: {} by ({}) on {}", song_name, artists.join(", "), album);
-                    add_listen(ctx, song_name, artists).await;
+                    add_listen(&ctx, song_name, artists).await;
+                    set_activity(&ctx).await;
                 }
             }
             None => {}
@@ -83,7 +94,38 @@ impl EventHandler for Handler {
     }
 }
 
-async fn add_listen(ctx: Context, song: String, artists: Vec<&str>) {
+/// Set the activity to the most listened artist
+async fn set_activity (ctx: &Context) {
+    let artist = get_top_artist(ctx).await;
+    let mut data = ctx.data.write().await;
+    let top = data.get::<TopArtist>().unwrap();
+
+    if &artist != top {
+
+        info!("Updating activity to top artist: {}", artist);
+        ctx.set_activity(Activity::listening(&artist)).await;
+        data.insert::<TopArtist>(artist);
+    }
+
+}
+
+/// Get the top artist from the database
+async fn get_top_artist(ctx: &Context) -> String {
+    let mut data = ctx.data.write().await;
+    let pool = data.get_mut::<DBPool>().expect("Expected Connection in TypeMap.");
+
+    let conn = pool.get().unwrap();
+    let artist = conn.query_row("SELECT * FROM artist ORDER BY listen_count DESC LIMIT 1;", NO_PARAMS, |row| {
+        Ok(ListenEntry {
+            name: row.get(0).unwrap(),
+            listen_count: row.get(1).unwrap(),
+        })
+    }).unwrap();
+
+    artist.name
+}
+
+async fn add_listen(ctx: &Context, song: String, artists: Vec<&str>) {
 
     // Create sqlite database
     let mut data = ctx.data.write().await;
@@ -145,6 +187,7 @@ async fn main() {
         info!("Inserting connection into HttpContext...");
         let mut data = client.data.write().await;
         data.insert::<DBPool>(pool);
+        data.insert::<TopArtist>(String::from("-"));
         info!("Done!");
     }
 
@@ -177,11 +220,18 @@ fn setup_database() -> Pool<SqliteConnectionManager> {
         NO_PARAMS,
     ).expect("Failed to create table?");
 
+    pool.get().unwrap().execute(
+        "CREATE TABLE IF NOT EXISTS user (
+                  id             TEXT PRIMARY KEY NOT NULL,
+                  currency       INTEGER NOT NULL
+                  )",
+        NO_PARAMS,
+    ).expect("Failed to create table?");
+
     pool
 }
 
 fn setup_logging() -> Result<(), fern::InitError> {
-
     let base_config = fern::Dispatch::new()
         .level(log::LevelFilter::Debug)
         .level_for("overly-verbose-target", log::LevelFilter::Info);
