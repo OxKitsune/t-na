@@ -22,7 +22,7 @@ pub async fn ping(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
     let response_timestamp = response.timestamp;
 
     match response.edit(&ctx, |m| {
-        m.content(format!("ping: **{}** ms", (response_timestamp.timestamp_millis() - timestamp.timestamp_millis())))
+        m.content(format!("ping: **{}** ms (university internet)", (response_timestamp.timestamp_millis() - timestamp.timestamp_millis())))
     }).await {
         Ok(res) => res,
         Err(err) => {
@@ -30,10 +30,6 @@ pub async fn ping(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
             return CommandResult::Ok(());
         }
     }
-
-    // let mut user: TNaUser = TNaUser::load_user(ctx, &msg.author.id).await.unwrap();
-    //
-    // info!("User: {} currency: {}", user.id,  user.currency);
 
     return CommandResult::Ok(());
 }

@@ -26,6 +26,7 @@ use serenity::model::gateway::Activity;
 use commands::{
     ping::*,
     spotify::*,
+    profile::*,
 };
 use user::*;
 use util::colour;
@@ -52,7 +53,7 @@ impl TypeMapKey for DBPool {
 struct Handler;
 
 #[group]
-#[commands(ping, spotify)]
+#[commands(ping, spotify, profile)]
 struct General;
 
 #[async_trait]
