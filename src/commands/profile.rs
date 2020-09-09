@@ -3,6 +3,9 @@ use serenity::framework::standard::{
     Args, CommandResult,
     macros::command,
 };
+use serenity::{
+    utils::Colour
+};
 use serenity::model::prelude::*;
 use serenity::prelude::*;
 
@@ -31,10 +34,13 @@ pub async fn profile(ctx: &Context, msg: &Message, args: Args) -> CommandResult 
     info!("Loaded t-na user with userid: {}", user.id);
 
     let mut author = msg.author.clone();
+    let mut name = author.clone().name;
 
     msg.channel_id.send_message(ctx, |m| {
         m.embed(|embed| {
-            embed.title(author.name);
+            embed.title(name);
+            embed.thumbnail( author.clone().avatar_url().unwrap_or("https://discordapp.com/assets/322c936a8c8be1b803cd94861bdfa868.png".to_string()));
+            embed.colour(Colour::BLITZ_BLUE);
             embed.field("Currency", user.currency, true)
         })
     }).await;
