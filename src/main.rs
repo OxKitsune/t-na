@@ -77,21 +77,19 @@ impl EventHandler for Handler {
 
     async fn presence_update(&self, ctx: Context, data: PresenceUpdateEvent) {
         let presence = data.presence;
-        match presence.activity {
-            Some(activity) => {
-                if activity.name == "Spotify" {
-                    let song_name = activity.details.expect("No song?");
-                    let assets = activity.state.expect("No artists?");
-                    let artists: Vec<&str> = assets.split("; ").collect();
-                    let album = activity.assets.expect("No assets?").large_text.expect("No album name?");
 
-                    info!("Playing: {} by ({}) on {}", song_name, artists.join(", "), album);
-                    add_listen(&ctx, song_name, artists).await;
-                    set_activity(&ctx).await;
-                }
+        for activity in presence.activities {
+            if activity.name == "Spotify" {
+                let song_name = activity.details.expect("No song?");
+                let assets = activity.state.expect("No artists?");
+                let artists: Vec<&str> = assets.split("; ").collect();
+                let album = activity.assets.expect("No assets?").large_text.expect("No album name?");
+
+                info!("Playing: {} by ({}) on {}", song_name, artists.join(", "), album);
+                add_listen(&ctx, song_name, artists).await;
+                set_activity(&ctx).await;
             }
-            None => {}
-        };
+        }
     }
 }
 
