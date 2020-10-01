@@ -8,7 +8,7 @@ use serenity::prelude::*;
 
 use log::{debug, info, trace, warn};
 
-use crate::DBPool;
+use crate::{DBPool, SpotifyClient};
 
 /// Struct that stores data for the listen entries
 pub struct ListenEntry {
@@ -31,6 +31,13 @@ pub async fn spotify(ctx: &Context, msg: &Message, args: Args) -> CommandResult 
     } else if first == "artists" || first == "artist" {
         let artist_msg = get_artists(ctx, 10).await;
         msg.channel_id.say(ctx, artist_msg).await;
+    }
+    else if first == "test" {
+
+        let mut data = ctx.data.write().await;
+        let client = data.get_mut::<SpotifyClient>().expect("Expected Connection in TypeMap.");
+        let mut album = client.album("spotify:album:4xCYBJ9gRaacDBXibS7hy2").await.expect("Failed to get album");
+
     } else {
         msg.channel_id.say(ctx, "Invalid arguments!").await;
     }
@@ -59,6 +66,7 @@ async fn get_artists(ctx: &Context, top: i32) -> String {
 
     song_msg.to_string()
 }
+
 
 async fn get_songs(ctx: &Context, top: i32) -> String {
     let mut data = ctx.data.write().await;

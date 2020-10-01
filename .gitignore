@@ -4,3 +4,5 @@
 *.iml
 *.db
 *.log
+start.bat
+/spotify_cache/

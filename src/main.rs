@@ -1,14 +1,20 @@
 extern crate fern;
 extern crate r2d2;
 extern crate r2d2_sqlite;
+extern crate rspotify;
 extern crate rusqlite;
+extern crate reqwest;
+extern crate image;
 
-use std::{collections::HashSet, env, io, sync::Arc};
+use std::{collections::HashSet, env, io, sync::Arc, path, fs};
 
 use fern::*;
 use log::{debug, info, trace, warn};
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
+use rspotify::client::Spotify;
+use rspotify::oauth2::SpotifyClientCredentials;
+use rspotify::util::get_token;
 use rusqlite::{Connection, NO_PARAMS, params, Result};
 use serenity::{
     async_trait,
@@ -25,21 +31,30 @@ use serenity::model::gateway::Activity;
 
 use commands::{
     ping::*,
-    spotify::*,
     profile::*,
+    spotify::*,
 };
 use user::*;
 use util::colour;
+use rspotify::model::search::SearchResult;
+use std::fs::File;
+use std::io::Write;
+use std::error::Error;
 
 mod commands;
 mod util;
 mod user;
 
 const DB_PATH: &str = "t-na.db";
+const SPOTIFY_CACHE_DIR: &str = "./spotify_cache/";
+const SPOTIFY_CACHE_ARTIST_DIR: &str = "./spotify_cache/artists/";
+const SPOTIFY_CACHE_SONG_DIR: &str = "./spotify_cache/songs/";
 
 struct DBPool;
 
 struct TopArtist;
+
+struct SpotifyClient;
 
 impl TypeMapKey for TopArtist {
     type Value = String;
@@ -49,6 +64,9 @@ impl TypeMapKey for DBPool {
     type Value = r2d2::Pool<SqliteConnectionManager>;
 }
 
+impl TypeMapKey for SpotifyClient {
+    type Value = Spotify;
+}
 
 struct Handler;
 
@@ -80,10 +98,15 @@ impl EventHandler for Handler {
 
         for activity in presence.activities {
             if activity.name == "Spotify" {
-                let song_name = activity.details.expect("No song?");
+                let mut song_name = activity.details.expect("No song?");
                 let assets = activity.state.expect("No artists?");
                 let artists: Vec<&str> = assets.split("; ").collect();
-                let album = activity.assets.expect("No assets?").large_text.expect("No album name?");
+                let mut assets = activity.assets.expect("No assets");
+                let album = assets.large_text.expect("No album name?");
+
+                let query = format!("{} {}", song_name, artists.join(", "));
+
+                handle_song_cache(&ctx, &*query).await;
 
                 info!("Playing: {} by ({}) on {}", song_name, artists.join(", "), album);
                 add_listen(&ctx, song_name, artists).await;
@@ -93,19 +116,58 @@ impl EventHandler for Handler {
     }
 }
 
+async fn handle_song_cache (ctx: &Context, song_name: &str) {
+    let mut data = ctx.data.write().await;
+    let spotify = data.get_mut::<SpotifyClient>().expect("Expected Connection in TypeMap.");
+
+    let search = spotify.search(&*song_name, rspotify::senum::SearchType::Track, 1, 0, Option::None, Option::None).await;
+
+    match search {
+        Ok(search_result) => {
+
+            match search_result {
+                SearchResult::Tracks(page) => {
+
+                    for track in page.items {
+                        info!("Track id: {}", track.id.unwrap_or(String::from("TRACK ID")));
+                        info!("Album art: {}", track.album.images[0].url);
+
+                        let output_dir = format!("{}/{}.jpg", SPOTIFY_CACHE_SONG_DIR, song_name);
+                        download_image(&*track.album.images[2].url, &*output_dir).await;
+                    }
+
+                }
+                _ => {}
+            }
+
+        },
+        Err(error) => warn!("Failed to get track: {}", error)
+    }
+}
+
+
+
+pub async fn download_image (url: &str, out: &str) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut response = reqwest::get(url).await?;
+    let mut dest = File::create(out)?;
+
+    let content = response.bytes().await?;
+    io::copy(&mut content.as_ref(), &mut dest);
+    Ok(())
+}
+
+
 /// Set the activity to the most listened artist
-async fn set_activity (ctx: &Context) {
+async fn set_activity(ctx: &Context) {
     let artist = get_top_artist(ctx).await;
     let mut data = ctx.data.write().await;
     let top = data.get::<TopArtist>().unwrap();
 
     if &artist != top {
-
         info!("Updating activity to top artist: {}", artist);
         ctx.set_activity(Activity::listening(&artist)).await;
         data.insert::<TopArtist>(artist);
     }
-
 }
 
 /// Get the top artist from the database
@@ -153,6 +215,23 @@ async fn main() {
     let token = env::var("DISCORD_TOKEN")
         .expect("Expected a token in the environment");
 
+    info!("Setting up spotify cache...");
+    let mut cache_path = path::Path::new(SPOTIFY_CACHE_DIR);
+    let mut artist_cache_path = path::Path::new(SPOTIFY_CACHE_ARTIST_DIR);
+    let mut song_cache_path = path::Path::new(SPOTIFY_CACHE_SONG_DIR);
+
+    if !cache_path.exists() {
+        fs::create_dir(cache_path);
+    }
+
+    if !artist_cache_path.exists() {
+        fs::create_dir(artist_cache_path);
+    }
+
+    if !song_cache_path.exists() {
+        fs::create_dir(song_cache_path);
+    }
+
     let http = Http::new_with_token(&token);
 
     // We will fetch your bot's owners and id
@@ -170,7 +249,7 @@ async fn main() {
     let framework = StandardFramework::new()
         .configure(|c| c
             .owners(owners)
-            .prefix("!"))
+            .prefix("d!"))
         .group(&GENERAL_GROUP);
 
 
@@ -187,12 +266,31 @@ async fn main() {
         let mut data = client.data.write().await;
         data.insert::<DBPool>(pool);
         data.insert::<TopArtist>(String::from("-"));
+        data.insert::<SpotifyClient>(setup_spotify());
         info!("Done!");
     }
 
     if let Err(why) = client.start().await {
         warn!("Client error: {:?}", why);
     }
+}
+
+fn setup_spotify() -> Spotify {
+
+    let mut client_id = env::var("RSPOTIFY_CLIENT_ID")
+        .expect("Expected a client id in the environment");
+    let mut client_secret = env::var("RSPOTIFY_CLIENT_SECRET")
+        .expect("Expected a client secret in the environment");
+
+    let client_credential = SpotifyClientCredentials::default()
+        .client_id(&*client_id)
+        .client_secret(&*client_secret)
+        .build();
+
+    // Build the spotify client
+    Spotify::default()
+        .client_credentials_manager(client_credential)
+        .build()
 }
 
 fn setup_database() -> Pool<SqliteConnectionManager> {
@@ -270,7 +368,7 @@ fn setup_logging() -> Result<(), fern::InitError> {
 
         // Set base verbosity
         .level(log::LevelFilter::Debug)
-        .level_for("overly-verbose-target", log::LevelFilter::Info)
+        .level_for("overly-verbose-target", log::LevelFilter::Debug)
 
         // Prevent these libraries from spamming the console with info that's not relevant to t-na
         .level_for("rustls", log::LevelFilter::Info)
@@ -279,6 +377,7 @@ fn setup_logging() -> Result<(), fern::InitError> {
         .level_for("reqwest", log::LevelFilter::Info)
         .level_for("h2", log::LevelFilter::Info)
         .level_for("tungstenite", log::LevelFilter::Info)
+        .level_for("rspotify", log::LevelFilter::Debug)
         .chain(io::stdout());
 
     // Build the log config
