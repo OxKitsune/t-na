@@ -275,10 +275,11 @@ fn setup_logging() -> Result<(), fern::InitError> {
         // Prevent these libraries from spamming the console with info that's not relevant to t-na
         .level_for("rustls", log::LevelFilter::Info)
         .level_for("hyper", log::LevelFilter::Info)
-        .level_for("serenity", log::LevelFilter::Info)
+        .level_for("serenity", log::LevelFilter::Warn)
         .level_for("reqwest", log::LevelFilter::Info)
         .level_for("h2", log::LevelFilter::Info)
         .level_for("tungstenite", log::LevelFilter::Info)
+        .level_for("tracing", log::LevelFilter::Warn)
         .chain(io::stdout());
 
     // Build the log config
